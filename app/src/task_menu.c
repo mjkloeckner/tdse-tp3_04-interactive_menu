@@ -56,7 +56,7 @@
 
 #define DEL_MEN_XX_MIN				0ul
 #define DEL_MEN_XX_MED				50ul
-#define DEL_MEN_XX_MAX				500ul
+#define DEL_MEN_XX_MAX				200ul
 
 /********************** internal data declaration ****************************/
 task_menu_dta_t task_menu_dta =
