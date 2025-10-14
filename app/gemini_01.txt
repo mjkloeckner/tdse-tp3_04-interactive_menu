@@ -1,0 +1,203 @@
+### **Resumen General de la Arquitectura del Software**
+
+El código implementa un sistema embebido basado en un microcontrolador STM32. La
+arquitectura es un sistema cooperativo, no apropiativo y controlado por eventos,
+comúnmente conocido como "super-loop" o bucle principal.
+
+El flujo de ejecución es el siguiente: 1.  **Inicialización (`main.c` ->
+`app_init`)**: Se configuran el hardware, los periféricos y se inicializan todas
+las tareas (módulos) del sistema una sola vez. 2.  **Bucle Infinito (`main.c` ->
+`app_update`)**: El programa entra en un bucle infinito donde se ejecutan las
+funciones de actualización de las tareas de manera secuencial. 3.  **Base de
+Tiempo (`stm32f1xx_it.c`)**: Una interrupción periódica del temporizador
+`SysTick` (configurada típicamente a 1 ms) actúa como el "corazón" del sistema,
+proporcionando una base de tiempo para que las tareas se ejecuten a intervalos
+regulares. 4.  **Modelo de Tareas**: El sistema se divide en dos tareas
+principales:
+    * `task_sensor`: Se encarga de leer el estado de los botones, implementar un
+      antirrebote (debounce) por software y generar eventos.
+    * `task_menu`: Gestiona la lógica de un menú interactivo, procesa los
+      eventos generados por `task_sensor` y actualiza una pantalla LCD. 5.
+      **Comunicación entre Tareas**: Las tareas se comunican de forma asíncrona
+      mediante una cola de eventos (`queue`). `task_sensor` es el productor de
+      eventos y `task_menu` es el consumidor.
+
+---
+
+### **Análisis Detallado de los Archivos**
+
+#### **1. `main.c`** Este archivo es el punto de entrada de la aplicación.
+* **`main()`**:
+    * Llama a `HAL_Init()` y otras funciones de configuración del hardware
+      (`SystemClock_Config`, `MX_GPIO_Init`, etc.), que son generadas por
+      STM32CubeMX.
+    * Llama a **`app_init()`** una sola vez para inicializar la lógica de la
+      aplicación y todas sus tareas.
+    * Entra en un bucle infinito `while(1)` donde llama repetidamente a
+      **`app_update()`**. Esta es la esencia del planificador "super-loop".
+
+#### **2. `stm32f1xx_it.c`** Este archivo contiene las rutinas de servicio de
+interrupción (ISR).
+* **`SysTick_Handler()`**: Es la función más importante para la lógica del
+  programa. Se ejecuta cada vez que el temporizador SysTick se desborda
+  (usualmente, cada 1 ms).
+    * Incrementa tres contadores de "ticks" globales y volátiles:
+        * `g_app_tick_cnt`: Un contador general para el planificador en `app.c`.
+        * `g_task_sensor_tick_cnt`: Un contador específico para la tarea del
+          sensor.
+        * `g_task_menu_tick_cnt`: Un contador específico para la tarea del menú.
+    * Estos contadores actúan como semáforos de tiempo, indicando a las
+      funciones `update` que ha transcurrido un milisegundo y que deben
+      ejecutarse.
+
+#### **3. `app.c`** Este archivo actúa como el planificador principal o
+"dispatcher" de tareas.
+* **`task_cfg_list[]`**: Define un arreglo con las tareas del sistema. Cada
+  tarea tiene una función de inicialización (`task_x_init`) y una de
+  actualización (`task_x_update`).
+* **`app_init()`**:
+    * Inicializa un contador de ciclos de alta precisión (`cycle_counter_init`)
+      para medir tiempos de ejecución.
+    * Recorre `task_cfg_list` y llama a la función `_init` de cada tarea (ej.,
+      `task_sensor_init()` y `task_menu_init()`).
+    * Inicializa en `0` el `WCET` (Worst-Case Execution Time o Tiempo de
+      Ejecución de Peor Caso) para cada tarea.
+* **`app_update()`**:
+    * Verifica si `g_app_tick_cnt` es mayor que cero. Si lo es, significa que la
+      ISR de `SysTick` ha ocurrido y es momento de ejecutar el ciclo de tareas.
+    * Dentro de un bucle `while`, procesa cada "tick" pendiente.
+    * En cada ciclo: 1.  Reinicia `g_app_runtime_us` a cero. 2.  Recorre la
+      lista de tareas. Para cada una:
+            * Reinicia el contador de ciclos.
+            * Ejecuta la función `_update` de la tarea (ej.,
+              `task_sensor_update()`).
+            * Obtiene el tiempo de ejecución de la tarea en microsegundos.
+            * **Acumula este tiempo en `g_app_runtime_us`**.
+            * **Compara el tiempo de ejecución actual con el `WCET` almacenado.
+              Si es mayor, actualiza el `WCET`**. 3.  Decrementa
+              `g_app_tick_cnt` para marcar que un tick ha sido procesado.
+    * El uso de `__asm("CPSID i")` (deshabilitar interrupciones) y `__asm("CPSIE
+      i")` (habilitar interrupciones) protege el acceso a las variables de tick
+      para evitar condiciones de carrera.
+
+#### **4. `task_sensor.c`** Implementa una máquina de estados para leer botones,
+incluyendo un filtro antirrebote.
+* **`task_sensor_cfg_list[]`**: Configura los pines de los botones (ENT, NEX,
+  ESC), el estado que indica que están presionados, y los eventos que deben
+  generar.
+* **`task_sensor_update()`**: Se ejecuta periódicamente gracias a su contador
+  `g_task_sensor_tick_cnt`. Su única función es llamar a
+  `task_sensor_statechart()`.
+* **`task_sensor_statechart()`**:
+    * Lee el estado físico de cada botón (`HAL_GPIO_ReadPin`).
+    * Implementa una máquina de estados de 4 estados para cada botón (`UP`,
+      `FALLING`, `DOWN`, `RISING`) para filtrar el ruido (debounce).
+    * Cuando se detecta una transición válida (ej., de `UP` a `DOWN` después de
+      un tiempo de espera), no genera el evento inmediatamente. Espera un tiempo
+      (`tick_max`) en el estado `FALLING`. Si al final de ese tiempo el botón
+      sigue presionado, considera la pulsación válida.
+    * Al confirmar una pulsación válida, llama a **`put_event_task_menu()`**
+      para encolar el evento correspondiente (ej., `EV_MEN_ENT_ACTIVE`).
+
+#### **5. `task_menu_interface.c` y `task_menu_attribute.h`** Estos archivos
+definen la interfaz de comunicación para la tarea del menú.
+* **`task_menu_attribute.h`**: Define los tipos de datos para los eventos
+  (`task_menu_ev_t`) y estados (`task_menu_st_t`) de la máquina de estados del
+  menú.
+* **`task_menu_interface.c`**: Implementa una **cola de eventos** circular
+  (buffer circular) muy simple.
+    * `put_event_task_menu()`: Añade un evento a la cola (llamada por
+      `task_sensor`).
+    * `get_event_task_menu()`: Extrae un evento de la cola (llamada por
+      `task_menu`).
+    * `any_event_task_menu()`: Verifica si hay eventos pendientes en la cola.
+
+#### **6. `task_menu.c`** Gestiona la lógica del menú y la interacción con la
+pantalla LCD.
+* **`task_menu_init()`**:
+    * Inicializa la cola de eventos.
+    * Inicializa la pantalla LCD (`displayInit`).
+    * Escribe los mensajes de bienvenida en la pantalla.
+* **`task_menu_update()`**: Se ejecuta periódicamente gracias a
+  `g_task_menu_tick_cnt` y llama a `task_menu_statechart()`.
+* **`task_menu_statechart()`**:
+    * Primero, comprueba si hay un evento en la cola con
+      `any_event_task_menu()`. Si es así, lo extrae.
+    * Implementa una máquina de estados simple con dos estados: `ST_MEN_XX_IDLE`
+      y `ST_MEN_XX_ACTIVE`.
+    * Se transita de `IDLE` a `ACTIVE` al recibir el evento `EV_MEN_ENT_ACTIVE`.
+    * En el estado `ACTIVE`, un contador de tiempo (`tick`) se decrementa.
+      Cuando llega a cero, se actualiza un número en la pantalla LCD (un
+      contador basado en `g_task_menu_cnt`) y se reinicia el contador de tiempo.
+      Esto hace que la pantalla se refresque periódicamente.
+    * Se vuelve al estado `IDLE` con el evento `EV_MEN_ENT_IDLE`.
+
+#### **7. `display.c`** Este es el driver de bajo nivel para controlar una
+pantalla LCD de caracteres, probablemente compatible con el estándar Hitachi
+HD44780, en modo de 4 bits.
+* **`displayInit()`**: Envía la secuencia de comandos necesaria para inicializar
+  la pantalla LCD (configurar modo de 4 u 8 bits, número de líneas, encender
+  display, etc.).
+* **`displayCharPositionWrite()`**: Envía un comando para ubicar el cursor en
+  una posición (fila y columna) específica.
+* **`displayStringWrite()`**: Envía una cadena de caracteres para ser mostrada
+  en la pantalla a partir de la posición actual del cursor.
+* Las funciones de bajo nivel como `displayCodeWrite`, `displayPinWrite` y
+  `displayDataBusWrite` se encargan de manipular los pines GPIO para enviar los
+  datos y comandos a la pantalla.
+
+---
+
+### **Análisis de la Evolución de Variables**
+
+A continuación, se detalla cómo evolucionan las variables que consultaste.
+
+#### **Nota sobre `g_task_test_tick_cnt`** La variable `g_task_test_tick_cnt`
+**no existe** en ninguno de los archivos proporcionados. Es posible que sea un
+error tipográfico. Las variables similares que sí existen y que son
+incrementadas por `SysTick_Handler` son:
+* `g_app_tick_cnt`
+* `g_task_sensor_tick_cnt`
+* `g_task_menu_tick_cnt`
+
+Todas ellas se incrementan en 1 cada milisegundo. Luego, son decrementadas en
+las funciones `_update` correspondientes a medida que se procesa el trabajo
+asociado a ese "tick".
+
+#### **`g_app_runtime_us`**
+* **Unidad de medida**: Microsegundos ($µs$).
+* **Inicialización (`app_init`)**: No se inicializa aquí.
+* **Evolución durante `app_update`**: 1.  Al comienzo de cada ciclo de ejecución
+  principal (es decir, cada vez que `g_app_tick_cnt > 0`), esta variable **se
+  reinicia a `0`**. 2.  Inmediatamente después, el planificador ejecuta
+  `task_sensor_update()`. El tiempo que tarda esta función en ejecutarse (medido
+  en $µs$) se suma a `g_app_runtime_us`. 3.  Luego, el planificador ejecuta
+  `task_menu_update()`. Su tiempo de ejecución también se suma a
+  `g_app_runtime_us`. 4.  Al final del bucle `for` que recorre las tareas,
+  `g_app_runtime_us` contiene la **suma total del tiempo de ejecución de todas
+  las tareas para un único tick de 1 ms**.
+    * **Ejemplo**: Si `task_sensor_update` tarda 15 $µs$ y `task_menu_update`
+      tarda 80 $µs$, al final del ciclo, `g_app_runtime_us` valdrá `95 µs`. En
+      el siguiente ciclo de 1 ms, se volverá a poner a cero antes de medir de
+      nuevo. Su valor fluctúa constantemente.
+
+#### **`task_dta_list[index].WCET`**
+* **Unidad de medida**: Microsegundos ($µs$).
+* **Inicialización (`app_init`)**: En `app_init`, el `WCET` de cada tarea
+  (`task_dta_list[0].WCET` para el sensor y `task_dta_list[1].WCET` para el
+  menú) se inicializa a **`0`**.
+* **Evolución durante `app_update`**: 1.  Después de que una tarea (ej.
+  `task_sensor_update`) se ejecuta, su tiempo de ejecución de ese ciclo
+  (`cycle_counter_time_us`) se compara con el `WCET` almacenado para esa tarea
+  (`task_dta_list[0].WCET`). 2.  **Si `cycle_counter_time_us` es mayor que el
+  `WCET` actual, el `WCET` se actualiza a este nuevo valor más alto.** 3.  Si el
+  tiempo de ejecución es menor o igual, el `WCET` no cambia.
+    * **Comportamiento**: Esta variable **solo puede aumentar o mantener su
+      valor; nunca disminuye**. Representa el "récord" o el tiempo máximo que ha
+      tardado una tarea en ejecutarse desde que se encendió el sistema. Es una
+      métrica crucial en sistemas de tiempo real para garantizar que la suma de
+      los peores tiempos de ejecución de todas las tareas no exceda el período
+      del sistema (en este caso, 1 ms). Por ejemplo, si una vez la tarea del
+      menú tarda 120 $µs$ debido a una actualización de la pantalla, el `WCET`
+      para esa tarea se establecerá en 120 y no cambiará a menos que en una
+      ejecución futura tarde aún más.

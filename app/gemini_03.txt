@@ -1,0 +1,147 @@
+### **Análisis de `board.h` (Abstracción de Hardware)**
+
+Este archivo es un encabezado (header) de configuración que actúa como una
+**Capa de Abstracción de Hardware (Hardware Abstraction Layer - HAL)** a nivel
+de placa. Su principal objetivo es centralizar y abstraer las definiciones de
+hardware específicas de la placa (pines, puertos, lógica de activación),
+permitiendo que el resto del código sea más portable y legible.
+
+#### **Funcionamiento Detallado:**
+
+1.  **Selección de Placa (Board Selection):**
+    * Se define una macro `BOARD` que especifica la placa de desarrollo para la
+      cual se está compilando el código. En este caso, está configurada para la
+      `NUCLEO_F103RC`.
+    * `#define BOARD (NUCLEO_F103RC)`
+
+2.  **Compilación Condicional:**
+    * El archivo utiliza directivas de preprocesador (`#if`, `#endif`) para
+      incluir bloques de definiciones que solo son válidos para la placa
+      seleccionada.
+    * El bloque que se compilará es el que corresponde a `((BOARD ==
+      NUCLEO_F103RC) || ...)`.
+
+3.  **Mapeo de Pines y Puertos:**
+    * Dentro del bloque condicional, se asignan nombres simbólicos y legibles
+      (ej. `BTN_ENT_PIN`, `LED_A_PORT`) a las definiciones de pines y puertos
+      específicos del hardware, que provienen de las librerías de STM32Cube (ej.
+      `D10_Pin`, `LD2_GPIO_Port`).
+    * Por ejemplo, en lugar de escribir `HAL_GPIO_ReadPin(D10_GPIO_Port,
+      D10_Pin)`, el programador puede usar `HAL_GPIO_ReadPin(BTN_ENT_PORT,
+      BTN_ENT_PIN)`, lo cual es más claro.
+
+4.  **Abstracción de la Lógica Eléctrica:**
+    * Define el estado eléctrico que corresponde a una acción lógica. Por
+      ejemplo, `BTN_ENT_PRESSED` se define como `GPIO_PIN_RESET`. Esto significa
+      que el botón "Enter" se considera presionado cuando el pin correspondiente
+      está en estado bajo (LOW). Esto es muy útil porque abstrae si el botón es
+      activo-alto o activo-bajo.
+    * De manera similar, `LED_A_ON` se define como `GPIO_PIN_SET`, indicando que
+      el LED se enciende con un nivel de voltaje alto (HIGH).
+
+**En resumen, este archivo permite que el resto del código fuente se refiera a
+los botones y LEDs por nombres lógicos (como "Enter" o "LED A") sin preocuparse
+por los detalles físicos de qué pin específico o qué nivel de voltaje se utiliza
+en la placa NUCLEO-F103RC.** Si se quisiera portar el código a otra placa, solo
+sería necesario modificar este archivo.
+
+---
+
+### **Análisis de `dwt.h` (Contador de Ciclos de Alta Precisión)**
+
+Este archivo de encabezado proporciona un conjunto de funciones para medir
+tiempos de ejecución con una resolución muy alta (a nivel de ciclos de reloj del
+CPU). Para ello, utiliza el periférico **DWT (Data Watchpoint and Trace)** del
+núcleo ARM Cortex-M.
+
+#### **Funcionamiento Detallado:**
+
+El archivo define una serie de funciones `static inline`, lo que sugiere al
+compilador que inserte el código de la función directamente en el lugar de la
+llamada, eliminando la sobrecarga de una llamada a función y haciéndolas muy
+eficientes.
+
+1.  **`cycle_counter_init(void)`:**
+    * Esta función inicializa el contador de ciclos del DWT.
+    * `CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;`: Habilita el bloque de
+      hardware de traza y depuración, que es necesario para que el DWT funcione.
+    * `DWT->CYCCNT = 0;`: Reinicia el registro del contador de ciclos a cero.
+    * `DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;`: Activa el contador para que
+      empiece a contar los ciclos de reloj del CPU.
+
+2.  **`cycle_counter_reset(void)`:**
+    * Simplemente reinicia el contador de ciclos a cero. Es útil para empezar a
+      medir un intervalo de tiempo desde cero.
+
+3.  **`cycle_counter_get(void)`:**
+    * Devuelve el valor actual del contador de ciclos, es decir, cuántos ciclos
+      de reloj han transcurrido desde la última vez que se reinició.
+
+4.  **`cycle_counter_get_time_us(void)`:**
+    * Esta es la función más útil para la medición de rendimiento. Convierte el
+      número de ciclos de reloj a microsegundos ($µs$).
+    * La fórmula utilizada es: `DWT->CYCCNT / (SystemCoreClock / 1000000)`.
+    * **Explicación de la fórmula:**
+        * `SystemCoreClock` es una variable global que contiene la frecuencia
+          del CPU en Hercios (ciclos por segundo).
+        * `(SystemCoreClock / 1000000)` calcula cuántos ciclos de reloj ocurren
+          en un microsegundo.
+        * Al dividir el número total de ciclos transcurridos (`DWT->CYCCNT`) por
+          los ciclos por microsegundo, se obtiene el tiempo total transcurrido
+          en microsegundos.
+
+**En resumen, este archivo es una herramienta de *profiling* o medición de
+rendimiento. Permite medir con gran precisión cuánto tiempo tarda en ejecutarse
+un bloque de código, lo cual es fundamental para calcular variables como el
+`WCET` (Worst-Case Execution Time) en el archivo `app.c`.**
+
+---
+
+### **Análisis de `systick.c` (Retardo Bloqueante por SysTick)**
+
+Este archivo implementa una función de retardo (delay) bloqueante con precisión
+de microsegundos, utilizando el temporizador del sistema **(SysTick)** del
+núcleo ARM Cortex-M.
+
+#### **Funcionamiento Detallado:**
+
+La única función, `systick_delay_us(uint32_t delay_us)`, funciona de la
+siguiente manera:
+
+1.  **Cálculo de Ticks Necesarios:**
+    * Calcula el número total de "ticks" o ciclos de reloj del SysTick que se
+      necesitan para alcanzar el retardo deseado en microsegundos (`delay_us`).
+    * La fórmula `target = delay_us * (SystemCoreClock / 1000000UL)` es la misma
+      que se usa en `dwt.h` para determinar el número de ciclos de CPU
+      equivalentes al tiempo deseado.
+
+2.  **Bucle de Espera (Bloqueo):**
+    * La función entra en un bucle infinito `while(1)` que es el núcleo del
+      bloqueo. El microcontrolador no ejecutará ninguna otra instrucción de la
+      aplicación principal mientras esté dentro de este bucle.
+    * Dentro del bucle, lee continuamente el valor actual del contador SysTick
+      (`SysTick->VAL`), que es un contador que cuenta hacia abajo.
+
+3.  **Manejo del "Wrap-Around" (Reinicio del Contador):**
+    * El código maneja correctamente el caso en que el contador SysTick llega a
+      cero y se recarga.
+    * **Caso normal (`current <= start`):** Si el valor actual es menor que el
+      inicial, el tiempo transcurrido es simplemente la resta `start - current`.
+    * **Caso de reinicio (`current > start`):** Si el contador se reinició, el
+      valor actual será mayor que el inicial. El tiempo transcurrido se calcula
+      como `SysTick->LOAD + start - current`, donde `SysTick->LOAD` es el valor
+      desde el que se recarga el contador. Esto asegura que el tiempo se mida
+      correctamente incluso si el retardo abarca un reinicio del temporizador.
+
+4.  **Condición de Salida:**
+    * En cada iteración del bucle, se comprueba si el tiempo transcurrido
+      (`elapsed`) ha alcanzado o superado el objetivo (`target`).
+    * Cuando `elapsed >= target`, el bucle se rompe con `break` y la función
+      termina, completando el retardo.
+
+**En resumen, este archivo ofrece una función de espera precisa pero
+*bloqueante*. Es utilizada por el driver del display (`display.c`) para generar
+los pequeños retardos necesarios para la comunicación con la pantalla LCD. El
+término "bloqueante" es clave, ya que significa que mientras la función se
+ejecuta, el microcontrolador no puede realizar ninguna otra tarea en el bucle
+principal de la aplicación.**

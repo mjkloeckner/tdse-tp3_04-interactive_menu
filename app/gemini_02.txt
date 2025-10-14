@@ -1,0 +1,145 @@
+### **Análisis y Explicación del Código Fuente**
+
+#### **1. `logger.c` y `logger.h` (Sistema de Registro/Log)** Estos archivos
+implementan un sistema de registro de mensajes (logging) para depuración.
+
+* **`logger.h`**:
+    * Define las macros `LOGGER_LOG` y `LOGGER_INFO` para facilitar el envío de
+      mensajes.
+    * La configuración `LOGGER_CONFIG_USE_SEMIHOSTING` (activada) indica que la
+      salida de los logs se realizará a través de "semihosting". Este es un
+      mecanismo de depuración que permite al microcontrolador enviar datos (como
+      texto) al computador anfitrión a través de la sonda de depuración (ej.
+      ST-Link), mostrándolos en la consola del IDE.
+    * **Crucialmente, la macro `LOGGER_LOG` deshabilita las interrupciones
+      (`__asm("CPSID i")`) antes de preparar y enviar el mensaje, y las
+      rehabilita después (`__asm("CPSIE i")`)**. Esto se hace para evitar que
+      una interrupción ocurra a mitad de una operación de log y corrompa los
+      datos, pero tiene importantes consecuencias en el rendimiento, como se
+      verá más adelante.
+
+* **`logger.c`**:
+    * Implementa la función `logger_log_print_` que, en este caso, utiliza
+      `printf` para enviar el mensaje formateado a través de semihosting.
+
+#### **2. `app.c` (Planificador Principal)** Este archivo es el núcleo del
+sistema operativo simple, un planificador cooperativo basado en un "super-loop".
+
+* **`app_init()`**:
+    * Se ejecuta una sola vez al inicio.
+    * Imprime mensajes de bienvenida e inicialización usando `LOGGER_INFO`.
+    * Recorre una lista de tareas (`task_cfg_list`) y llama a la función de
+      inicialización de cada una (ej. `task_sensor_init`, `task_menu_init`).
+    * Inicializa las variables de rendimiento, como el `WCET` (Worst-Case
+      Execution Time) de cada tarea, en cero.
+    * Inicializa los contadores de "ticks" que son la base de tiempo del
+      sistema.
+
+* **`app_update()`**:
+    * Se ejecuta continuamente dentro del bucle `while(1)` de `main.c`.
+    * Es activado por un "tick" del sistema (la variable `g_app_tick_cnt` se
+      vuelve mayor que cero).
+    * Dentro de un bucle `while`, procesa todos los ticks pendientes. En cada
+      pasada: 1.  Mide el tiempo de ejecución de la función `_update` de cada
+      tarea (`task_sensor_update`, `task_menu_update`) utilizando un contador de
+      ciclos de hardware (DWT). 2.  Suma estos tiempos para obtener el tiempo de
+      ejecución total del ciclo (`g_app_runtime_us`). 3.  Compara el tiempo de
+      ejecución de la tarea actual con el `WCET` almacenado y lo actualiza si el
+      tiempo actual es mayor.
+
+* **`HAL_SYSTICK_Callback()`**:
+    * Esta función es la rutina de servicio de interrupción (ISR) del `SysTick`.
+      Se ejecuta automáticamente cada 1 milisegundo.
+    * Incrementa los contadores de tick para la aplicación principal
+      (`g_app_tick_cnt`) y para cada tarea específica (`g_task_sensor_tick_cnt`,
+      `g_task_menu_tick_cnt`).
+
+#### **3. `task_sensor.c` (Tarea de Lectura de Botones)** Gestiona la lectura de
+los botones físicos, implementando un filtro antirrebote (debounce) por
+software.
+
+* **`task_sensor_init()`**: Inicializa las variables de la tarea y muestra
+  mensajes de log.
+* **`task_sensor_update()`**: Se activa periódicamente gracias a
+  `g_task_sensor_tick_cnt` y ejecuta la máquina de estados.
+* **`task_sensor_statechart()`**:
+    * Implementa una máquina de estados de 4 etapas (`UP`, `FALLING`, `DOWN`,
+      `RISING`) para cada botón.
+    * Cuando se presiona un botón, no reacciona al instante. Entra en el estado
+      `FALLING` y espera un tiempo (`tick_max`). Si el botón sigue presionado
+      después de ese tiempo, se valida la pulsación y se genera un evento (ej.
+      `EV_MEN_ENT_ACTIVE`).
+    * Los eventos se envían a la tarea del menú mediante la función
+      `put_event_task_menu()`.
+
+#### **4. `task_menu.c` (Tarea de Lógica de Menú)** Controla la lógica de la
+interfaz de usuario y actualiza la pantalla LCD.
+
+* **`task_menu_init()`**: Inicializa la pantalla LCD y muestra un mensaje de
+  bienvenida. También inicializa sus propias variables y la cola de eventos.
+* **`task_menu_update()`**: Se activa periódicamente y ejecuta la máquina de
+  estados del menú.
+* **`task_menu_statechart()`**:
+    * Revisa si hay eventos pendientes en la cola (enviados por `task_sensor`).
+    * Procesa los eventos para cambiar entre sus estados (`ST_MEN_XX_IDLE`,
+      `ST_MEN_XX_ACTIVE`).
+    * En el estado `ACTIVE`, decrementa un temporizador. Cuando este llega a
+      cero, actualiza un contador en la pantalla LCD. Esto crea una
+      actualización periódica en el display.
+
+---
+
+### **Impacto de `LOGGER_INFO()` en la Evolución de Variables**
+
+El uso de `LOGGER_INFO()` tiene un **impacto muy significativo y negativo** en
+el rendimiento del sistema y, por lo tanto, en las variables que lo miden. La
+razón principal es que la comunicación por semihosting es **extremadamente
+lenta** en comparación con la velocidad de ejecución normal del
+microcontrolador.
+
+#### **Nota sobre `g_task_test_tick_cnt`** Esta variable **no existe** en el
+código fuente proporcionado. Es probable que sea un error y se refiera a una de
+las variables de tick existentes: `g_app_tick_cnt`, `g_task_sensor_tick_cnt` o
+`g_task_menu_tick_cnt`. El impacto principal sobre estas es que la
+deshabilitación de interrupciones por parte de `LOGGER_INFO` puede introducir
+"jitter" (variabilidad en el tiempo de respuesta a la interrupción del
+`SysTick`), haciendo que el sistema sea menos predecible.
+
+#### **`g_app_runtime_us` (Tiempo de Ejecución del Ciclo)**
+* **Unidad de medida**: Microsegundos ($µs$).
+* **Evolución**:
+    * **Sin `LOGGER_INFO()`**: En un ciclo normal de `app_update`,
+      `g_app_runtime_us` mediría solo el tiempo de la lógica de las tareas (leer
+      pines, actualizar máquinas de estado), que sería de unas pocas decenas de
+      microsegundos.
+    * **Con `LOGGER_INFO()`**: Cada vez que se llama a `LOGGER_INFO`
+      (especialmente durante `app_init`), el tiempo de ejecución se dispara. La
+      operación de `printf` sobre semihosting puede tardar **varios
+      milisegundos**. Como `app.c` mide el tiempo de ejecución de las funciones
+      `_init` y `_update` que contienen estos logs, el valor de
+      `g_app_runtime_us` reflejará este enorme tiempo.
+    * **Impacto**: `g_app_runtime_us` tendrá valores **extremadamente altos y
+      variables**, del orden de **miles de microsegundos (milisegundos)** en
+      lugar de decenas, cada vez que una tarea imprima un log. Esto falsea por
+      completo la métrica de carga de la CPU.
+
+#### **`task_dta_list[index].WCET` (Tiempo de Ejecución de Peor Caso)**
+* **Unidad de medida**: Microsegundos ($µs$).
+* **Evolución**:
+    * **Inicialización (`app_init`)**: Las funciones `task_sensor_init` y
+      `task_menu_init` hacen un uso intensivo de `LOGGER_INFO`. Dado que el
+      `WCET` se mide también durante la inicialización, este se establecerá
+      inmediatamente en un valor **muy alto** (múltiples milisegundos) debido al
+      tiempo que tarda la consola de depuración en procesar los mensajes.
+    * **Ejecución (`app_update`)**: El `WCET` representa el tiempo máximo que ha
+      tardado una tarea en ejecutarse. Debido a los logs en la inicialización,
+      este valor ya será muy grande desde el principio. Durante la ejecución
+      normal, la lógica de las tareas es rápida, por lo que el `WCET`
+      probablemente no se actualizará, a menos que se llame a `LOGGER_INFO` de
+      nuevo dentro de `app_update`.
+    * **Impacto**: El `WCET` medido **no reflejará el tiempo de ejecución de la
+      lógica real de la tarea, sino el tiempo de la operación de E/S de
+      depuración**. Esto hace que la métrica `WCET` sea inútil para el análisis
+      de tiempo real, ya que el código de depuración no estaría presente en una
+      versión final del producto. El valor será del orden de **miles de
+      microsegundos**.
