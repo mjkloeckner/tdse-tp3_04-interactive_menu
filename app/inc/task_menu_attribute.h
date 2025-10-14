@@ -48,41 +48,68 @@ extern "C" {
 /********************** macros ***********************************************/
 
 /********************** typedef **********************************************/
-/* Menu Statechart - State Transition Table */
-/* 	------------------------+-----------------------+-----------------------+-----------------------+------------------------
- * 	| Current               | Event                 |                       | Next                  |                       |
- * 	| State                 | (Parameters)          | [Guard]               | State                 | Actions               |
- * 	|=======================+=======================+=======================+=======================+=======================|
- * 	| INICIAL               |                       |                       | ST_MEN_XX_IDLE        |                       |
- * 	|-----------------------+-----------------------+-----------------------+-----------------------+-----------------------|
- * 	| ST_MEN_XX_IDLE        | EV_MEN_MEN_ACTIVE     |                       | ST_MEN_XX_ACTIVE      |                       |
- * 	|                       |                       |                       |                       |                       |
- * 	|-----------------------+-----------------------+-----------------------+-----------------------+-----------------------|
- * 	| ST_MEN_XX_ACTIVE      | EV_MEN_MEN_IDLE       |                       | ST_MEN_XX_IDLE        |                       |
- * 	|                       |                       |                       |                       |                       |
- * 	------------------------+-----------------------+-----------------------+-----------------------+------------------------
- */
+/*
+* Menu Statechart - State Transition Table
+* Every state is also a state machine (nested state machines)
+* +---------------------+--------------------+---------+---------------------+---------+
+* | Current State       | Event (Parameters) | [Guard] | Next State          | Actions |
+* +=====================+====================+=========+=====================+=========+
+* | INICIAL             |                    |         | ST_MEN_MOTOR_SELECT |         |
+* +---------------------+--------------------+---------+---------------------+---------+
+* | ST_MEN_MOTOR_SELECT | EV_MEN_ENTER_BTN   |         | ST_MEN_MOTOR_POWER  |         |
+* +---------------------+--------------------+---------+---------------------+---------+
+* | ST_MEN_MOTOR_POWER  | EV_MEN_NEXT_BTN    |         | ST_MEN_MOTOR_SPEED  |         |
+* |                     | EV_MEN_BACK_BTN    |         | ST_MEN_MOTOR_SELECT |         |
+* +---------------------+--------------------+---------+---------------------+---------+
+* | ST_MEN_MOTOR_SPEED  | EV_MEN_NEXT_BTN    |         | ST_MEN_MOTOR_SPIN   |         |
+* |                     | EV_MEN_BACK_BTN    |         | ST_MEN_MOTOR_SELECT |         |
+* +---------------------+--------------------+---------+---------------------+---------+
+* | ST_MEN_MOTOR_SPIN   | EV_MEN_NEXT_BTN    |         | ST_MEN_MOTOR_POWER  |         |
+* |                     | EV_MEN_BACK_BTN    |         | ST_MEN_MOTOR_SELECT |         |
+* +---------------------+--------------------+---------+---------------------+---------+
+*
+* Menu Statechart - ST_MEN_MOTOR_SELECT - State Transition Table
+
+* +-----------------------------+--------------+---------+---------------------------------+--------------------+
+* | Current State               | Event        | [Guard] | Next State                      | Actions            |
+* +=============================+==============+=========+=================================+====================+
+* |                             | EV_NEXT_BTN  |         | ST_MEN_MOTOR_SELECT_MOTOR_2     |                    |
+* | ST_MEN_MOTOR_SELECT_MOTOR_1 |--------------+---------+---------------------------------+--------------------+
+* |                             | EV_ENTER_BTN |         | ST_MOTOR_POWER                  | selected_motor = 1 |
+* +-----------------------------+--------------+---------+---------------------------------+--------------------+
+* |                             | EV_NEXT_BTN  |         | ST_MEN_MOTOR_SELECT_MOTOR_1     |                    |
+* | ST_MEN_MOTOR_SELECT_MOTOR_2 |--------------+---------+---------------------------------+--------------------+
+* |                             | EV_ENTER_BTN |         | ST_MOTOR_POWER                  | selected_motor = 2 |
+* +-----------------------------+--------------+---------+---------------------------------+--------------------+
+*/
 
 /* Events to excite Task Menu */
-typedef enum task_menu_ev {EV_MEN_ENT_IDLE,
-						   EV_MEN_ENT_ACTIVE,
-						   EV_MEN_NEX_IDLE,
-						   EV_MEN_NEX_ACTIVE,
-						   EV_MEN_ESC_IDLE,
-						   EV_MEN_ESC_ACTIVE} task_menu_ev_t;
+typedef enum {
+    EV_MEN_ENT_IDLE,
+    EV_MEN_ENT_ACTIVE,
+
+    EV_MEN_NEX_IDLE,
+    EV_MEN_NEX_ACTIVE,
+
+    EV_MEN_ESC_IDLE,
+    EV_MEN_ESC_ACTIVE
+} task_menu_ev_t;
 
 /* State of Task Menu */
 typedef enum {
-	ST_MEN_XX_IDLE,
-	ST_MEN_XX_ACTIVE
+    ST_MEN_MOTOR_SELECT,
+    ST_MEN_MOTOR_SELECT_MOTOR_1,
+    ST_MEN_MOTOR_SELECT_MOTOR_2,
+    ST_MEN_MOTOR_POWER,
+    ST_MEN_MOTOR_SPEED,
+    ST_MEN_MOTOR_SPIN,
 } task_menu_st_t;
 
-typedef struct
-{
-	uint32_t		tick;
-	task_menu_st_t	state;
-	task_menu_ev_t	event;
-	bool			flag;
+typedef struct {
+    uint32_t tick;
+    task_menu_st_t state;
+    task_menu_ev_t event;
+    bool flag;
 } task_menu_dta_t;
 
 /********************** external data declaration ****************************/
