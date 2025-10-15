@@ -51,12 +51,12 @@
 #include "display.h"
 
 /********************** macros and definitions *******************************/
-#define G_TASK_MEN_CNT_INI			0ul
-#define G_TASK_MEN_TICK_CNT_INI		0ul
+#define G_TASK_MEN_CNT_INI          0ul
+#define G_TASK_MEN_TICK_CNT_INI     0ul
 
-#define DEL_MEN_XX_MIN				0ul
-#define DEL_MEN_XX_MED				50ul
-#define DEL_MEN_XX_MAX				200ul
+#define DEL_MEN_XX_MIN              0ul
+#define DEL_MEN_XX_MED             50ul
+#define DEL_MEN_XX_MAX            200ul
 
 /********************** internal data declaration ****************************/
 task_menu_dta_t task_menu_dta =
@@ -64,12 +64,27 @@ task_menu_dta_t task_menu_dta =
 
 #define MENU_DTA_QTY	(sizeof(task_menu_dta)/sizeof(task_menu_dta_t))
 
+typedef struct {
+    uint8_t power, speed, spin;
+} motor_data_t;
+
 /********************** internal functions declaration ***********************/
 void task_menu_statechart(void);
 
 /********************** internal data definition *****************************/
-const char *p_task_menu 		= "Task Menu (Interactive Menu)";
-const char *p_task_menu_ 		= "Non-Blocking & Update By Time Code";
+const char *p_task_menu = "Task Menu (Interactive Menu)";
+const char *p_task_menu_ = "Non-Blocking & Update By Time Code";
+bool g_display_update = false;
+
+#define MOTOR_QTY 2
+
+motor_data_t g_motor_data[MOTOR_QTY];
+
+uint8_t g_selected_motor = 0;
+uint8_t g_new_sel_motor_spin;
+uint8_t g_new_sel_motor_power;
+uint8_t g_new_sel_motor_speed;
+task_menu_st_t g_menu_prev_state;
 
 /********************** external data declaration ****************************/
 uint32_t g_task_menu_cnt;
@@ -101,22 +116,18 @@ void task_menu_init(void *parameters)
 	state = ST_MEN_MOTOR_SELECT;
 	p_task_menu_dta->state = state;
 
+    g_menu_prev_state = state;
+    g_selected_motor = 1;
+
 	event = EV_MEN_ENT_IDLE;
 	p_task_menu_dta->event = event;
 
 	b_event = false;
 	p_task_menu_dta->flag = b_event;
 
-	LOGGER_INFO(" ");
-	LOGGER_INFO("   %s = %lu   %s = %lu   %s = %s",
-				 GET_NAME(state), (uint32_t)state,
-				 GET_NAME(event), (uint32_t)event,
-				 GET_NAME(b_event), (b_event ? "true" : "false"));
-
 	/* Init & Print out: LCD Display */
 	displayInit(DISPLAY_CONNECTION_GPIO_4BITS);
-    displayCharPositionWrite(0, 0);
-    displayStringWrite("> Motor         ");
+    g_display_update = true;
 }
 
 void task_menu_update(void *parameters)
@@ -157,10 +168,21 @@ void task_menu_update(void *parameters)
     }
 }
 
+void menu_set_state(task_menu_st_t new_state)
+{
+    task_menu_dta_t *p_task_menu_dta;
+    p_task_menu_dta = &task_menu_dta;
+
+    g_menu_prev_state = p_task_menu_dta->state;
+    p_task_menu_dta->state = new_state;
+
+    g_display_update = true;
+}
+
 void task_menu_statechart(void)
 {
     task_menu_dta_t *p_task_menu_dta;
-    // char menu_str[8];
+    char menu_row_str[16 + 4];
 
     /* Update Task Menu Data Pointer */
     p_task_menu_dta = &task_menu_dta;
@@ -175,15 +197,25 @@ void task_menu_statechart(void)
     {
         case ST_MEN_MOTOR_SELECT:
 
+            if (g_display_update)
+            {
+                g_display_update = false;
+                displayCharPositionWrite(0, 0);
+                sprintf(menu_row_str, "> Motor %d     ", g_selected_motor);
+                displayStringWrite(menu_row_str);
+            }
+
             if (true == p_task_menu_dta->flag)
             {
                 p_task_menu_dta->flag = false;
                 switch (p_task_menu_dta->event)
                 {
                     case EV_MEN_ENT_ACTIVE:
-                        p_task_menu_dta->state = ST_MEN_MOTOR_POWER;
-                        displayCharPositionWrite(0, 0);
-                        displayStringWrite("> Power         ");
+                        menu_set_state(ST_MEN_MOTOR_POWER);
+                    break;
+                    case EV_MEN_NEX_ACTIVE:
+                        g_selected_motor = (g_selected_motor % MOTOR_QTY) + 1;
+                        g_display_update = true;
                     break;
                     case EV_MEN_ESC_ACTIVE:
                     break;
@@ -196,20 +228,67 @@ void task_menu_statechart(void)
 
         case ST_MEN_MOTOR_POWER:
 
+            if (g_display_update)
+            {
+                g_display_update = false;
+                displayCharPositionWrite(0, 0);
+                sprintf(menu_row_str, "%1d> Power        ", g_selected_motor);
+                displayStringWrite(menu_row_str);
+            }
+
             if (true == p_task_menu_dta->flag)
             {
                 p_task_menu_dta->flag = false;
                 switch (p_task_menu_dta->event)
                 {
+                    case EV_MEN_ENT_ACTIVE:
+                        menu_set_state(ST_MEN_MOTOR_POWER_SEL);
+                    break;
                     case EV_MEN_NEX_ACTIVE:
-                        p_task_menu_dta->state = ST_MEN_MOTOR_SPEED;
-                        displayCharPositionWrite(0, 0);
-                        displayStringWrite("> Speed         ");
+                        menu_set_state(ST_MEN_MOTOR_SPEED);
                     break;
                     case EV_MEN_ESC_ACTIVE:
-                        p_task_menu_dta->state = ST_MEN_MOTOR_SELECT;
-                        displayCharPositionWrite(0, 0);
-                        displayStringWrite("> Motor         ");
+                        menu_set_state(ST_MEN_MOTOR_SELECT);
+                    break;
+                    default:
+                    break;
+                }
+            }
+
+        break;
+
+        case ST_MEN_MOTOR_POWER_SEL:
+
+            if (g_menu_prev_state != p_task_menu_dta->state)
+            {
+                g_menu_prev_state = p_task_menu_dta->state;
+                g_new_sel_motor_power = g_motor_data[g_selected_motor - 1].power;
+            }
+
+            if (g_display_update)
+            {
+                g_display_update = false;
+                displayCharPositionWrite(0, 0);
+                sprintf(menu_row_str, "%1d> Power    %3d%%", g_selected_motor,
+                        g_new_sel_motor_power);
+                displayStringWrite(menu_row_str);
+            }
+
+            if (true == p_task_menu_dta->flag)
+            {
+                p_task_menu_dta->flag = false;
+                switch (p_task_menu_dta->event)
+                {
+                    case EV_MEN_ENT_ACTIVE:
+                        g_motor_data[g_selected_motor - 1].power = g_new_sel_motor_power;
+                        menu_set_state(ST_MEN_MOTOR_POWER);
+                    break;
+                    case EV_MEN_NEX_ACTIVE:
+                        g_new_sel_motor_power = ((g_new_sel_motor_power + 10) % 110);
+                        g_display_update = true;
+                    break;
+                    case EV_MEN_ESC_ACTIVE:
+                        menu_set_state(ST_MEN_MOTOR_POWER);
                     break;
                     default:
                     break;
@@ -220,20 +299,24 @@ void task_menu_statechart(void)
 
         case ST_MEN_MOTOR_SPEED:
 
+            if (g_display_update)
+            {
+                g_display_update = false;
+                displayCharPositionWrite(0, 0);
+                sprintf(menu_row_str, "%1d> Speed        ", g_selected_motor);
+                displayStringWrite(menu_row_str);
+            }
+
             if (true == p_task_menu_dta->flag)
             {
                 p_task_menu_dta->flag = false;
                 switch (p_task_menu_dta->event)
                 {
                     case EV_MEN_NEX_ACTIVE:
-                        p_task_menu_dta->state = ST_MEN_MOTOR_SPIN;
-                        displayCharPositionWrite(0, 0);
-                        displayStringWrite("> Spin           ");
+                        menu_set_state(ST_MEN_MOTOR_SPIN);
                     break;
                     case EV_MEN_ESC_ACTIVE:
-                        p_task_menu_dta->state = ST_MEN_MOTOR_SELECT;
-                        displayCharPositionWrite(0, 0);
-                        displayStringWrite("> Motor         ");
+                        menu_set_state(ST_MEN_MOTOR_SELECT);
                     break;
                     default:
                     break;
@@ -244,21 +327,25 @@ void task_menu_statechart(void)
 
         case ST_MEN_MOTOR_SPIN:
 
+            if (g_display_update)
+            {
+                g_display_update = false;
+                displayCharPositionWrite(0, 0);
+                sprintf(menu_row_str, "%1d> Spin         ", g_selected_motor);
+                displayStringWrite(menu_row_str);
+            }
+
             if (true == p_task_menu_dta->flag)
             {
                 p_task_menu_dta->flag = false;
                 switch (p_task_menu_dta->event)
                 {
                     case EV_MEN_NEX_ACTIVE:
-                        p_task_menu_dta->state = ST_MEN_MOTOR_POWER;
-                        displayCharPositionWrite(0, 0);
-                        displayStringWrite("> Power         ");
+                        menu_set_state(ST_MEN_MOTOR_POWER);
                     break;
 
                     case EV_MEN_ESC_ACTIVE:
-                        p_task_menu_dta->state = ST_MEN_MOTOR_SELECT;
-                        displayCharPositionWrite(0, 0);
-                        displayStringWrite("> Motor         ");
+                        menu_set_state(ST_MEN_MOTOR_SELECT);
                     break;
                     default:
                     break;
@@ -273,6 +360,7 @@ void task_menu_statechart(void)
             p_task_menu_dta->state = ST_MEN_MOTOR_SELECT;
             p_task_menu_dta->event = EV_MEN_ENT_IDLE;
             p_task_menu_dta->flag  = false;
+            g_display_update = false;
 
             break;
     }

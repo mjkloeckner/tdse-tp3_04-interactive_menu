@@ -98,11 +98,12 @@ typedef enum {
 /* State of Task Menu */
 typedef enum {
     ST_MEN_MOTOR_SELECT,
-    ST_MEN_MOTOR_SELECT_MOTOR_1,
-    ST_MEN_MOTOR_SELECT_MOTOR_2,
     ST_MEN_MOTOR_POWER,
+    ST_MEN_MOTOR_POWER_SEL,
     ST_MEN_MOTOR_SPEED,
+    ST_MEN_MOTOR_SPEED_SEL,
     ST_MEN_MOTOR_SPIN,
+    ST_MEN_MOTOR_SPIN_SEL
 } task_menu_st_t;
 
 typedef struct {
