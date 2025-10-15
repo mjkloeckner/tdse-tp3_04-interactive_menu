@@ -128,39 +128,39 @@ void task_sensor_init(void *parameters)
 
 void task_sensor_update(void *parameters)
 {
-	bool b_time_update_required = false;
+    bool b_time_update_required = false;
 
-	/* Protect shared resource */
-	__asm("CPSID i");	/* disable interrupts */
+    /* Protect shared resource */
+    __asm("CPSID i");	/* disable interrupts */
     if (G_TASK_SEN_TICK_CNT_INI < g_task_sensor_tick_cnt)
     {
-		/* Update Tick Counter */
-    	g_task_sensor_tick_cnt--;
-    	b_time_update_required = true;
+        /* Update Tick Counter */
+        g_task_sensor_tick_cnt--;
+        b_time_update_required = true;
     }
     __asm("CPSIE i");	/* enable interrupts */
 
     while (b_time_update_required)
     {
-		/* Update Task Counter */
-		g_task_sensor_cnt++;
+        /* Update Task Counter */
+        g_task_sensor_cnt++;
 
-		/* Run Task Sensor Statechart */
-    	task_sensor_statechart();
+        /* Run Task Sensor Statechart */
+        task_sensor_statechart();
 
-    	/* Protect shared resource */
-		__asm("CPSID i");	/* disable interrupts */
-		if (G_TASK_SEN_TICK_CNT_INI < g_task_sensor_tick_cnt)
-		{
-			/* Update Tick Counter */
-			g_task_sensor_tick_cnt--;
-			b_time_update_required = true;
-		}
-		else
-		{
-			b_time_update_required = false;
-		}
-		__asm("CPSIE i");	/* enable interrupts */
+        /* Protect shared resource */
+        __asm("CPSID i");	/* disable interrupts */
+        if (G_TASK_SEN_TICK_CNT_INI < g_task_sensor_tick_cnt)
+        {
+            /* Update Tick Counter */
+            g_task_sensor_tick_cnt--;
+            b_time_update_required = true;
+        }
+        else
+        {
+            b_time_update_required = false;
+        }
+        __asm("CPSIE i");	/* enable interrupts */
     }
 }
 
@@ -178,11 +178,11 @@ void task_sensor_statechart(void)
 
         if (p_task_sensor_cfg->pressed == HAL_GPIO_ReadPin(p_task_sensor_cfg->gpio_port, p_task_sensor_cfg->pin))
         {
-            p_task_sensor_dta->event =	EV_BTN_XX_DOWN;
+            p_task_sensor_dta->event = EV_BTN_XX_DOWN;
         }
         else
         {
-            p_task_sensor_dta->event =	EV_BTN_XX_UP;
+            p_task_sensor_dta->event = EV_BTN_XX_UP;
         }
 
         switch (p_task_sensor_dta->state)

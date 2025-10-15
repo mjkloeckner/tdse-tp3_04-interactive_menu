@@ -93,40 +93,40 @@ volatile uint32_t g_task_menu_tick_cnt;
 /********************** external functions definition ************************/
 void task_menu_init(void *parameters)
 {
-	task_menu_dta_t *p_task_menu_dta;
-	task_menu_st_t	state;
-	task_menu_ev_t	event;
-	bool b_event;
+    task_menu_dta_t *p_task_menu_dta;
+    task_menu_st_t	state;
+    task_menu_ev_t	event;
+    bool b_event;
 
-	/* Print out: Task Initialized */
-	LOGGER_INFO(" ");
-	LOGGER_INFO("  %s is running - %s", GET_NAME(task_menu_init), p_task_menu);
-	LOGGER_INFO("  %s is a %s", GET_NAME(task_menu), p_task_menu_);
+    /* Print out: Task Initialized */
+    LOGGER_INFO(" ");
+    LOGGER_INFO("  %s is running - %s", GET_NAME(task_menu_init), p_task_menu);
+    LOGGER_INFO("  %s is a %s", GET_NAME(task_menu), p_task_menu_);
 
-	/* Init & Print out: Task execution counter */
-	g_task_menu_cnt = G_TASK_MEN_CNT_INI;
-	LOGGER_INFO("   %s = %lu", GET_NAME(g_task_menu_cnt), g_task_menu_cnt);
+    /* Init & Print out: Task execution counter */
+    g_task_menu_cnt = G_TASK_MEN_CNT_INI;
+    LOGGER_INFO("   %s = %lu", GET_NAME(g_task_menu_cnt), g_task_menu_cnt);
 
-	init_queue_event_task_menu();
+    init_queue_event_task_menu();
 
-	/* Update Task Actuator Configuration & Data Pointer */
-	p_task_menu_dta = &task_menu_dta;
+    /* Update Task Actuator Configuration & Data Pointer */
+    p_task_menu_dta = &task_menu_dta;
 
-	/* Init & Print out: Task execution FSM */
-	state = ST_MEN_MOTOR_SELECT;
-	p_task_menu_dta->state = state;
+    /* Init & Print out: Task execution FSM */
+    state = ST_MEN_MOTOR_SELECT;
+    p_task_menu_dta->state = state;
 
     g_menu_prev_state = state;
     g_selected_motor = 1;
 
-	event = EV_MEN_ENT_IDLE;
-	p_task_menu_dta->event = event;
+    event = EV_MEN_ENT_IDLE;
+    p_task_menu_dta->event = event;
 
-	b_event = false;
-	p_task_menu_dta->flag = b_event;
+    b_event = false;
+    p_task_menu_dta->flag = b_event;
 
-	/* Init & Print out: LCD Display */
-	displayInit(DISPLAY_CONNECTION_GPIO_4BITS);
+    /* Init & Print out: LCD Display */
+    displayInit(DISPLAY_CONNECTION_GPIO_4BITS);
     g_display_update = true;
 }
 
@@ -200,7 +200,7 @@ void task_menu_statechart(void)
             if (g_display_update)
             {
                 g_display_update = false;
-                displayCharPositionWrite(0, 0);
+                displayClear();
                 sprintf(menu_row_str, "> Motor %d     ", g_selected_motor);
                 displayStringWrite(menu_row_str);
             }
@@ -228,11 +228,20 @@ void task_menu_statechart(void)
 
         case ST_MEN_MOTOR_POWER:
 
+            if (g_menu_prev_state != p_task_menu_dta->state)
+            {
+                g_menu_prev_state = p_task_menu_dta->state;
+                g_new_sel_motor_power = g_motor_data[g_selected_motor - 1].power;
+            }
+
             if (g_display_update)
             {
                 g_display_update = false;
                 displayCharPositionWrite(0, 0);
                 sprintf(menu_row_str, "%1d> Power        ", g_selected_motor);
+                displayStringWrite(menu_row_str);
+                displayCharPositionWrite(16 - 4, 1);
+                sprintf(menu_row_str, "%3d%%", g_new_sel_motor_power);
                 displayStringWrite(menu_row_str);
             }
 
@@ -269,8 +278,10 @@ void task_menu_statechart(void)
             {
                 g_display_update = false;
                 displayCharPositionWrite(0, 0);
-                sprintf(menu_row_str, "%1d> Power    %3d%%", g_selected_motor,
-                        g_new_sel_motor_power);
+                sprintf(menu_row_str, "%1d> Power set", g_selected_motor);
+                displayStringWrite(menu_row_str);
+                displayCharPositionWrite(16 - 4, 1);
+                sprintf(menu_row_str, "%3d%%", g_new_sel_motor_power);
                 displayStringWrite(menu_row_str);
             }
 
@@ -302,8 +313,8 @@ void task_menu_statechart(void)
             if (g_display_update)
             {
                 g_display_update = false;
-                displayCharPositionWrite(0, 0);
-                sprintf(menu_row_str, "%1d> Speed        ", g_selected_motor);
+                displayClear();
+                sprintf(menu_row_str, "%1d> Speed", g_selected_motor);
                 displayStringWrite(menu_row_str);
             }
 
@@ -331,7 +342,7 @@ void task_menu_statechart(void)
             {
                 g_display_update = false;
                 displayCharPositionWrite(0, 0);
-                sprintf(menu_row_str, "%1d> Spin         ", g_selected_motor);
+                sprintf(menu_row_str, "%1d> Spin", g_selected_motor);
                 displayStringWrite(menu_row_str);
             }
 
