@@ -92,7 +92,9 @@ typedef enum {
     EV_MEN_NEX_ACTIVE,
 
     EV_MEN_ESC_IDLE,
-    EV_MEN_ESC_ACTIVE
+    EV_MEN_ESC_ACTIVE,
+
+    EV_MEN_INACTIVE_TIMEOUT
 } task_menu_ev_t;
 
 /* State of Task Menu */

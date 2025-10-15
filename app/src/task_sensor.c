@@ -51,12 +51,13 @@
 #include "task_menu_interface.h"
 
 /********************** macros and definitions *******************************/
-#define G_TASK_SEN_CNT_INIT			0ul
-#define G_TASK_SEN_TICK_CNT_INI		0ul
+#define G_TASK_SEN_CNT_INIT                0ul
+#define G_TASK_SEN_TICK_CNT_INI            0ul
+#define G_TASK_SEN_INACTIVE_MAX_TICK   10000ul // 10 seconds
 
-#define DEL_BTN_XX_MIN				0ul
-#define DEL_BTN_XX_MED				25ul
-#define DEL_BTN_XX_MAX				50ul
+#define DEL_BTN_XX_MIN  0ul
+#define DEL_BTN_XX_MED 25ul
+#define DEL_BTN_XX_MAX 50ul
 
 /********************** internal data declaration ****************************/
 const task_sensor_cfg_t task_sensor_cfg_list[] = {
@@ -85,6 +86,8 @@ void task_sensor_statechart(void);
 const char *p_task_sensor 		= "Task Sensor (Sensor Statechart)";
 const char *p_task_sensor_ 		= "Non-Blocking & Update By Time Code";
 
+uint32_t g_task_sensor_last_active_ticks;
+
 /********************** external data declaration ****************************/
 uint32_t g_task_sensor_cnt;
 volatile uint32_t g_task_sensor_tick_cnt;
@@ -105,6 +108,9 @@ void task_sensor_init(void *parameters)
 	/* Init & Print out: Task execution counter */
 	g_task_sensor_cnt = G_TASK_SEN_CNT_INIT;
 	LOGGER_INFO("   %s = %lu", GET_NAME(g_task_sensor_cnt), g_task_sensor_cnt);
+
+
+    g_task_sensor_last_active_ticks = G_TASK_SEN_INACTIVE_MAX_TICK;
 
 	for (index = 0; SENSOR_DTA_QTY > index; index++)
 	{
@@ -129,6 +135,17 @@ void task_sensor_init(void *parameters)
 void task_sensor_update(void *parameters)
 {
     bool b_time_update_required = false;
+
+    if (0 < g_task_sensor_last_active_ticks)
+    {
+        g_task_sensor_last_active_ticks--;
+
+        if (1 == g_task_sensor_last_active_ticks)
+        {
+            g_task_sensor_last_active_ticks = 0;
+            put_event_task_menu(EV_MEN_INACTIVE_TIMEOUT);
+        }
+    }
 
     /* Protect shared resource */
     __asm("CPSID i");	/* disable interrupts */
@@ -206,6 +223,7 @@ void task_sensor_statechart(void)
                     {
                         put_event_task_menu(p_task_sensor_cfg->signal_down);
                         p_task_sensor_dta->state = ST_BTN_XX_DOWN;
+                        g_task_sensor_last_active_ticks = G_TASK_SEN_INACTIVE_MAX_TICK;
                     }
                     else
                     {
@@ -234,6 +252,7 @@ void task_sensor_statechart(void)
                     {
                         put_event_task_menu(p_task_sensor_cfg->signal_up);
                         p_task_sensor_dta->state = ST_BTN_XX_UP;
+                        g_task_sensor_last_active_ticks = G_TASK_SEN_INACTIVE_MAX_TICK;
                     }
                     else
                     {
@@ -253,4 +272,5 @@ void task_sensor_statechart(void)
         }
     }
 }
+
 /********************** end of file ******************************************/

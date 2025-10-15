@@ -193,6 +193,14 @@ void task_menu_statechart(void)
         p_task_menu_dta->event = get_event_task_menu();
     }
 
+
+    if ((true == p_task_menu_dta->flag)
+        && (p_task_menu_dta->event == EV_MEN_INACTIVE_TIMEOUT)
+        && (p_task_menu_dta->state != ST_MEN_MOTOR_SELECT))
+    {
+        menu_set_state(ST_MEN_MOTOR_SELECT);
+    }
+
     switch (p_task_menu_dta->state)
     {
         case ST_MEN_MOTOR_SELECT:

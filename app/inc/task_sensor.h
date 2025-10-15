@@ -53,9 +53,9 @@ extern "C" {
 extern uint32_t g_task_sensor_cnt;
 extern volatile uint32_t g_task_sensor_tick_cnt;
 
-/********************** external functions declaration ***********************/
-extern void task_sensor_init(void *parameters);
-extern void task_sensor_update(void *parameters);
+/********************** functions declaration *********************************/
+void task_sensor_init(void *parameters);
+void task_sensor_update(void *parameters);
 
 /********************** End of CPP guard *************************************/
 #ifdef __cplusplus

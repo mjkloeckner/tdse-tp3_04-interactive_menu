@@ -130,60 +130,60 @@ void app_init(void)
 
 void app_update(void)
 {
-	uint32_t index;
-	bool b_time_update_required = false;
-	uint32_t cycle_counter_time_us;
+    uint32_t index;
+    bool b_time_update_required = false;
+    uint32_t cycle_counter_time_us;
 
-	/* Protect shared resource */
-	__asm("CPSID i");	/* disable interrupts */
+    /* Protect shared resource */
+    __asm("CPSID i");	/* disable interrupts */
     if (G_APP_TICK_CNT_INI < g_app_tick_cnt)
     {
-		/* Update Tick Counter */
-    	g_app_tick_cnt--;
-    	b_time_update_required = true;
+        /* Update Tick Counter */
+        g_app_tick_cnt--;
+        b_time_update_required = true;
     }
     __asm("CPSIE i");	/* enable interrupts */
 
-	/* Check if it's time to run tasks */
+    /* Check if it's time to run tasks */
     while (b_time_update_required)
     {
-    	/* Update App Counter */
-    	g_app_cnt++;
-    	g_app_runtime_us = 0;
+        /* Update App Counter */
+        g_app_cnt++;
+        g_app_runtime_us = 0;
 
-		/* Go through the task arrays */
-		for (index = 0; TASK_QTY > index; index++)
-		{
-			cycle_counter_reset();
+        /* Go through the task arrays */
+        for (index = 0; TASK_QTY > index; index++)
+        {
+            cycle_counter_reset();
 
-    		/* Run task_x_update */
-			(*task_cfg_list[index].task_update)(task_cfg_list[index].parameters);
+            /* Run task_x_update */
+            (*task_cfg_list[index].task_update)(task_cfg_list[index].parameters);
 
-			cycle_counter_time_us = cycle_counter_get_time_us();
+            cycle_counter_time_us = cycle_counter_get_time_us();
 
-			/* Update variables */
-			g_app_runtime_us += cycle_counter_time_us;
+            /* Update variables */
+            g_app_runtime_us += cycle_counter_time_us;
 
-			if (task_dta_list[index].WCET < cycle_counter_time_us)
-			{
-				task_dta_list[index].WCET = cycle_counter_time_us;
-			}
-		}
+            if (task_dta_list[index].WCET < cycle_counter_time_us)
+            {
+                task_dta_list[index].WCET = cycle_counter_time_us;
+            }
+        }
 
-		/* Protect shared resource */
-		__asm("CPSID i");	/* disable interrupts */
-		if (G_APP_TICK_CNT_INI < g_app_tick_cnt)
-		{
-			/* Update Tick Counter */
-			g_app_tick_cnt--;
-			b_time_update_required = true;
-		}
-		else
-		{
-			b_time_update_required = false;
-		}
-		__asm("CPSIE i");	/* enable interrupts */
-	}
+        /* Protect shared resource */
+        __asm("CPSID i");	/* disable interrupts */
+        if (G_APP_TICK_CNT_INI < g_app_tick_cnt)
+        {
+            /* Update Tick Counter */
+            g_app_tick_cnt--;
+            b_time_update_required = true;
+        }
+        else
+        {
+            b_time_update_required = false;
+        }
+        __asm("CPSIE i");	/* enable interrupts */
+    }
 }
 
 void HAL_SYSTICK_Callback(void)
