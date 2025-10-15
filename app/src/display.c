@@ -31,6 +31,7 @@
 
 //=====[Declaration of private defines]========================================
 #define DISPLAY_IR_CLEAR_DISPLAY   0b00000001
+#define DISPLAY_IR_SET_CURSOR_HOME 0b00000010
 #define DISPLAY_IR_ENTRY_MODE_SET  0b00000100
 #define DISPLAY_IR_DISPLAY_CONTROL 0b00001000
 #define DISPLAY_IR_FUNCTION_SET    0b00100000
@@ -182,6 +183,15 @@ void displayInit( displayConnection_t connection )
                       DISPLAY_IR_DISPLAY_CONTROL_DISPLAY_ON |
                       DISPLAY_IR_DISPLAY_CONTROL_CURSOR_OFF |
                       DISPLAY_IR_DISPLAY_CONTROL_BLINK_OFF );
+    HAL_Delay(1);
+}
+
+void displayClear(void)
+{
+    displayCodeWrite( DISPLAY_RS_INSTRUCTION,
+                      DISPLAY_IR_CLEAR_DISPLAY);
+
+
     HAL_Delay(1);
 }
 
