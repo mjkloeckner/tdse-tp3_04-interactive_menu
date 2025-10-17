@@ -56,8 +56,8 @@
 #define G_TASK_SEN_INACTIVE_MAX_TICK   10000ul // 10 seconds
 
 #define DEL_BTN_XX_MIN  0ul
-#define DEL_BTN_XX_MED 20ul
-#define DEL_BTN_XX_MAX 40ul
+#define DEL_BTN_XX_MED 10ul
+#define DEL_BTN_XX_MAX 20ul
 
 /********************** internal data declaration ****************************/
 const task_sensor_cfg_t task_sensor_cfg_list[] = {
