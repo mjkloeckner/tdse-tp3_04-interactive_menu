@@ -60,12 +60,13 @@
 
 /********************** internal data declaration ****************************/
 task_menu_dta_t task_menu_dta =
-	{DEL_MEN_XX_MIN, ST_MEN_MOTOR_SELECT, EV_MEN_ENT_IDLE, false};
+    {DEL_MEN_XX_MIN, ST_MEN_MOTOR_INFO, EV_MEN_ENT_IDLE, false};
 
 #define MENU_DTA_QTY	(sizeof(task_menu_dta)/sizeof(task_menu_dta_t))
 
 typedef struct {
-    uint8_t power, speed, spin;
+    bool power, spin;
+    uint8_t speed;
 } motor_data_t;
 
 /********************** internal functions declaration ***********************/
@@ -82,7 +83,7 @@ motor_data_t g_motor_data[MOTOR_QTY];
 
 uint8_t g_selected_motor = 0;
 uint8_t g_new_sel_motor_spin;
-uint8_t g_new_sel_motor_power;
+bool g_new_sel_motor_power;
 uint8_t g_new_sel_motor_speed;
 task_menu_st_t g_menu_prev_state;
 
@@ -113,7 +114,7 @@ void task_menu_init(void *parameters)
     p_task_menu_dta = &task_menu_dta;
 
     /* Init & Print out: Task execution FSM */
-    state = ST_MEN_MOTOR_SELECT;
+    state = ST_MEN_MOTOR_INFO;
     p_task_menu_dta->state = state;
 
     g_menu_prev_state = state;
@@ -179,6 +180,11 @@ void menu_set_state(task_menu_st_t new_state)
     g_display_update = true;
 }
 
+char* motor_power_to_str(uint8_t motor_power)
+{
+    return motor_power ? "On" : "Off";
+}
+
 char* motor_spin_to_str(uint8_t motor_spin)
 {
     return motor_spin ? "Right" : "Left";
@@ -201,13 +207,50 @@ void task_menu_statechart(void)
 
     if ((true == p_task_menu_dta->flag)
         && (p_task_menu_dta->event == EV_MEN_INACTIVE_TIMEOUT)
-        && (p_task_menu_dta->state != ST_MEN_MOTOR_SELECT))
+        && (p_task_menu_dta->state != ST_MEN_MOTOR_INFO))
     {
-        menu_set_state(ST_MEN_MOTOR_SELECT);
+        menu_set_state(ST_MEN_MOTOR_INFO);
     }
 
     switch (p_task_menu_dta->state)
     {
+        case ST_MEN_MOTOR_INFO:
+
+            if (g_display_update)
+            {
+                g_display_update = false;
+                displayClear();
+                sprintf(menu_row_str, "1>%4s> %s>%5d%%",
+                        motor_power_to_str(g_motor_data[0].power),
+                        g_motor_data[0].spin ? "R" : "L",
+                        g_motor_data[0].speed);
+                displayStringWrite(menu_row_str);
+
+                displayCharPositionWrite(0, 1);
+                sprintf(menu_row_str, "2>%4s> %s>%5d%%",
+                        motor_power_to_str(g_motor_data[1].power),
+                        g_motor_data[1].spin ? "R" : "L",
+                        g_motor_data[1].speed);
+                displayStringWrite(menu_row_str);
+            }
+
+            if (true == p_task_menu_dta->flag)
+            {
+                p_task_menu_dta->flag = false;
+                switch (p_task_menu_dta->event)
+                {
+                    case EV_MEN_ENT_ACTIVE:
+                    case EV_MEN_NEX_ACTIVE:
+                    case EV_MEN_ESC_ACTIVE:
+                        menu_set_state(ST_MEN_MOTOR_SELECT);
+                        break;
+                    default:
+                    break;
+                }
+            }
+
+        break;
+
         case ST_MEN_MOTOR_SELECT:
 
             if (g_display_update)
@@ -231,6 +274,7 @@ void task_menu_statechart(void)
                         g_display_update = true;
                     break;
                     case EV_MEN_ESC_ACTIVE:
+                        menu_set_state(ST_MEN_MOTOR_INFO);
                     break;
                     default:
                     break;
@@ -253,9 +297,8 @@ void task_menu_statechart(void)
                 displayClear();
                 sprintf(menu_row_str, "%1d> Power", g_selected_motor);
                 displayStringWrite(menu_row_str);
-                displayCharPositionWrite(16 - 5, 1);
-                sprintf(menu_row_str, "%3d%%", g_new_sel_motor_power);
-                displayStringWrite(menu_row_str);
+                displayCharPositionWrite(11, 1);
+                displayStringWrite(motor_power_to_str(g_motor_data[g_selected_motor-1].power));
             }
 
             if (true == p_task_menu_dta->flag)
@@ -290,12 +333,12 @@ void task_menu_statechart(void)
             if (g_display_update)
             {
                 g_display_update = false;
+                displayClear();
                 displayCharPositionWrite(0, 0);
                 sprintf(menu_row_str, "%1d> Power set", g_selected_motor);
                 displayStringWrite(menu_row_str);
                 displayCharPositionWrite(11, 1);
-                sprintf(menu_row_str, "%3d%%", g_new_sel_motor_power);
-                displayStringWrite(menu_row_str);
+                displayStringWrite(motor_power_to_str(g_new_sel_motor_power));
             }
 
             if (true == p_task_menu_dta->flag)
@@ -308,7 +351,7 @@ void task_menu_statechart(void)
                         menu_set_state(ST_MEN_MOTOR_POWER);
                     break;
                     case EV_MEN_NEX_ACTIVE:
-                        g_new_sel_motor_power = ((g_new_sel_motor_power + 10) % 110);
+                        g_new_sel_motor_power = !g_new_sel_motor_power;
                         g_display_update = true;
                     break;
                     case EV_MEN_ESC_ACTIVE:

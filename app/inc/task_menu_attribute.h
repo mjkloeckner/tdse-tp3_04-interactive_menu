@@ -99,6 +99,7 @@ typedef enum {
 
 /* State of Task Menu */
 typedef enum {
+    ST_MEN_MOTOR_INFO,
     ST_MEN_MOTOR_SELECT,
     ST_MEN_MOTOR_POWER,
     ST_MEN_MOTOR_POWER_SEL,
