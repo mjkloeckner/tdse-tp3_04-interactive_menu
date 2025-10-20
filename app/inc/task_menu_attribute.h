@@ -50,37 +50,50 @@ extern "C" {
 /********************** typedef **********************************************/
 /*
 * Menu Statechart - State Transition Table
-* Every state is also a state machine (nested state machines)
-* +---------------------+--------------------+---------+---------------------+---------+
-* | Current State       | Event (Parameters) | [Guard] | Next State          | Actions |
-* +=====================+====================+=========+=====================+=========+
-* | INICIAL             |                    |         | ST_MEN_MOTOR_SELECT |         |
-* +---------------------+--------------------+---------+---------------------+---------+
-* | ST_MEN_MOTOR_SELECT | EV_MEN_ENTER_BTN   |         | ST_MEN_MOTOR_POWER  |         |
-* +---------------------+--------------------+---------+---------------------+---------+
-* | ST_MEN_MOTOR_POWER  | EV_MEN_NEXT_BTN    |         | ST_MEN_MOTOR_SPEED  |         |
-* |                     | EV_MEN_BACK_BTN    |         | ST_MEN_MOTOR_SELECT |         |
-* +---------------------+--------------------+---------+---------------------+---------+
-* | ST_MEN_MOTOR_SPEED  | EV_MEN_NEXT_BTN    |         | ST_MEN_MOTOR_SPIN   |         |
-* |                     | EV_MEN_BACK_BTN    |         | ST_MEN_MOTOR_SELECT |         |
-* +---------------------+--------------------+---------+---------------------+---------+
-* | ST_MEN_MOTOR_SPIN   | EV_MEN_NEXT_BTN    |         | ST_MEN_MOTOR_POWER  |         |
-* |                     | EV_MEN_BACK_BTN    |         | ST_MEN_MOTOR_SELECT |         |
-* +---------------------+--------------------+---------+---------------------+---------+
-*
-* Menu Statechart - ST_MEN_MOTOR_SELECT - State Transition Table
-
-* +-----------------------------+--------------+---------+---------------------------------+--------------------+
-* | Current State               | Event        | [Guard] | Next State                      | Actions            |
-* +=============================+==============+=========+=================================+====================+
-* |                             | EV_NEXT_BTN  |         | ST_MEN_MOTOR_SELECT_MOTOR_2     |                    |
-* | ST_MEN_MOTOR_SELECT_MOTOR_1 |--------------+---------+---------------------------------+--------------------+
-* |                             | EV_ENTER_BTN |         | ST_MOTOR_POWER                  | selected_motor = 1 |
-* +-----------------------------+--------------+---------+---------------------------------+--------------------+
-* |                             | EV_NEXT_BTN  |         | ST_MEN_MOTOR_SELECT_MOTOR_1     |                    |
-* | ST_MEN_MOTOR_SELECT_MOTOR_2 |--------------+---------+---------------------------------+--------------------+
-* |                             | EV_ENTER_BTN |         | ST_MOTOR_POWER                  | selected_motor = 2 |
-* +-----------------------------+--------------+---------+---------------------------------+--------------------+
+* 
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | Current State          | Event                   | [Guard] | Next State              | Actions                                                              |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | ST_MEN_MOTOR_INFO      | EV_MEN_ENT_ACTIVE       |         | ST_MEN_MOTOR_SELECT     | sel_motor = 1                                                        |
+* | ST_MEN_MOTOR_INFO      | EV_MEN_NEX_ACTIVE       |         | ST_MEN_MOTOR_SELECT     | sel_motor = 1                                                        |
+* | ST_MEN_MOTOR_INFO      | EV_MEN_ESC_ACTIVE       |         | ST_MEN_MOTOR_SELECT     | sel_motor = 1                                                        |
+* | ST_MEN_MOTOR_INFO      | EV_MEN_INACTIVE_TIMEOUT |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | ST_MEN_MOTOR_SELECT    | EV_MEN_ENT_ACTIVE       |         | ST_MEN_MOTOR_POWER      |                                                                      |
+* | ST_MEN_MOTOR_SELECT    | EV_MEN_NEX_ACTIVE       |         | ST_MEN_MOTOR_SELECT     | sel_motor = (sel_motor % motor_qty) + 1                              |
+* | ST_MEN_MOTOR_SELECT    | EV_MEN_ESC_ACTIVE       |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* | ST_MEN_MOTOR_SELECT    | EV_MEN_INACTIVE_TIMEOUT |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | ST_MEN_MOTOR_POWER     | EV_MEN_ENT_ACTIVE       |         | ST_MEN_MOTOR_POWER_SEL  | new_sel_motor_pow = sel_motor_pow                                    |
+* | ST_MEN_MOTOR_POWER     | EV_MEN_NEX_ACTIVE       |         | ST_MEN_MOTOR_SPEED      |                                                                      |
+* | ST_MEN_MOTOR_POWER     | EV_MEN_ESC_ACTIVE       |         | ST_MEN_MOTOR_SELECT     |                                                                      |
+* | ST_MEN_MOTOR_POWER     | EV_MEN_INACTIVE_TIMEOUT |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | ST_MEN_MOTOR_POWER_SEL | EV_MEN_ENT_ACTIVE       |         | ST_MEN_MOTOR_POWER      | sel_motor_pow = new_sel_motor_pow                                    |
+* | ST_MEN_MOTOR_POWER_SEL | EV_MEN_NEX_ACTIVE       |         | ST_MEN_MOTOR_POWER_SEL  | new_sel_motor_pow = !new_sel_motor_pow                               |
+* | ST_MEN_MOTOR_POWER_SEL | EV_MEN_ESC_ACTIVE       |         | ST_MEN_MOTOR_POWER      |                                                                      |
+* | ST_MEN_MOTOR_POWER_SEL | EV_MEN_INACTIVE_TIMEOUT |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | ST_MEN_MOTOR_SPEED     | EV_MEN_ENT_ACTIVE       |         | ST_MEN_MOTOR_SPEED_SEL  | new_sel_motor_speed = sel_motor_speed                                |
+* | ST_MEN_MOTOR_SPEED     | EV_MEN_NEX_ACTIVE       |         | ST_MEN_MOTOR_SPIN       |                                                                      |
+* | ST_MEN_MOTOR_SPEED     | EV_MEN_ESC_ACTIVE       |         | ST_MEN_MOTOR_SELECT     |                                                                      |
+* | ST_MEN_MOTOR_SPEED     | EV_MEN_INACTIVE_TIMEOUT |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | ST_MEN_MOTOR_SPEED_SEL | EV_MEN_ENT_ACTIVE       |         | ST_MEN_MOTOR_SPEED      | sel_motor_speed = new_sel_motor_speed                                |
+* | ST_MEN_MOTOR_SPEED_SEL | EV_MEN_NEX_ACTIVE       |         | ST_MEN_MOTOR_SPEED_SEL  | new_sel_motor_speed = (new_sel_motor_speed + step) % max_motor_speed |
+* | ST_MEN_MOTOR_SPEED_SEL | EV_MEN_ESC_ACTIVE       |         | ST_MEN_MOTOR_SPEED      |                                                                      |
+* | ST_MEN_MOTOR_SPEED_SEL | EV_MEN_INACTIVE_TIMEOUT |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | ST_MEN_MOTOR_SPIN      | EV_MEN_ENT_ACTIVE       |         | ST_MEN_MOTOR_SPIN_SEL   | new_sel_motor_spin = sel_motor_spin                                  |
+* | ST_MEN_MOTOR_SPIN      | EV_MEN_NEX_ACTIVE       |         | ST_MEN_MOTOR_POWER      |                                                                      |
+* | ST_MEN_MOTOR_SPIN      | EV_MEN_ESC_ACTIVE       |         | ST_MEN_MOTOR_SELECT     |                                                                      |
+* | ST_MEN_MOTOR_SPIN      | EV_MEN_INACTIVE_TIMEOUT |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
+* | ST_MEN_MOTOR_SPIN_SEL  | EV_MEN_ENT_ACTIVE       |         | ST_MEN_MOTOR_SPIN       | sel_motor_spin = new_sel_motor_spin                                  |
+* | ST_MEN_MOTOR_SPIN_SEL  | EV_MEN_NEX_ACTIVE       |         | ST_MEN_MOTOR_SPIN_SEL   | new_sel_motor_spin = !new_sel_motor_spin                             |
+* | ST_MEN_MOTOR_SPIN_SEL  | EV_MEN_ESC_ACTIVE       |         | ST_MEN_MOTOR_SPIN       |                                                                      |
+* | ST_MEN_MOTOR_SPIN_SEL  | EV_MEN_INACTIVE_TIMEOUT |         | ST_MEN_MOTOR_INFO       |                                                                      |
+* +------------------------+-------------------------+---------+-------------------------+----------------------------------------------------------------------+
 */
 
 /* Events to excite Task Menu */
